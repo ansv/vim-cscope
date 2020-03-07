@@ -21,7 +21,6 @@
 "
 " nnoremap <silent> <C-l> <C-l><C-g>
 
-
 if !has("cscope")
     echo expand('<sfile>:p') . " cannot start:"
     echo "vim is compiled without option '--enable-cscope'"
@@ -72,7 +71,6 @@ endfunction
 
 nnoremap <silent> <C-g><C-h> :call <SID>hide_quickfix()<CR>
 nnoremap <silent> <C-g>h     :call <SID>hide_quickfix()<CR>
-
 
 function! s:track_project()
     if s:scall("track_project", "")
@@ -192,7 +190,6 @@ nnoremap <silent> <C-g><C-d> :call <SID>goto_def()<CR>
 nnoremap <silent> <C-g>d     :call <SID>goto_def()<CR>
 nnoremap <silent> g<C-d>     :call <SID>goto_def()<CR>
 
-
 function! s:find_token_refs()
     let id = expand("<cword>")
     call s:quickfix_list("s", id, '\<' . id . '\>')
@@ -201,7 +198,6 @@ endfunction
 " find all refs to the token (Definition + Usages)
 nnoremap <silent> <C-g><C-g> :call <SID>find_token_refs()<CR>
 nnoremap <silent> <C-g>g     :call <SID>find_token_refs()<CR>
-
 
 function! s:switch_qf()
     let wnr = winnr()
@@ -216,7 +212,6 @@ endfunction
 nnoremap <silent> <C-g><C-z> :call <SID>switch_qf()<CR>
 nnoremap <silent> <C-g>z :call <SID>switch_qf()<CR>
 
-
 function! s:find_text()
     let str = input("find text: ")
     if str != ''
@@ -227,7 +222,6 @@ endfunction
 " find all instances of the [T]ext
 nnoremap <silent> <C-g><C-t> :call <SID>find_text()<CR>
 nnoremap <silent> <C-g>t     :call <SID>find_text()<CR>
-
 
 function! s:find_files()
     let str = input("find files with the name part: ")
@@ -241,7 +235,6 @@ endfunction
 " find [F]iles
 nnoremap <silent> <C-g><C-f> :call <SID>find_files()<CR>
 nnoremap <silent> <C-g>f     :call <SID>find_files()<CR>
-
 
 function! s:on_write()
     if s:scall("is_tracked", expand("%:p"))

@@ -20,23 +20,24 @@ only_sources_() {
     grep -iE "\.[ch](|pp|\+\+)$|\.cc$"
 }
 
-get_wd_() {
+get_root_dir_() {
     echo "$1" |sed -r "s,/\.cscope$,,;s,/\.(git|svn|hg)$,,"
 }
 
 track_all_new_() {
     local pp="$1"
-    local wd="$(get_wd_ "$pp")"
+    local rd="$(get_root_dir_ "$pp")"
     local t=$(mktemp)
 
     mkdir -p "$pp"
+    :>"$pp"/tmp.files
 
     {
-        cat
-        [ -e "$pp"/tmp.files ] && cat "$pp"/tmp.files{,}
+        cat # from stdin
+        cat "$pp"/tmp.files{,}
         [ -e "$pp"/cscope.files ] && cat "$pp"/cscope.files{,}
     } |sort |uniq -u |tee "$t" |while read -r s; do
-        echo "${s#"$wd"/}"
+        echo "${s#"$rd"/}"
     done >>"$pp/files"
 
     [ -s "$t" ] || { rm -f "$t"; return 1; }
@@ -46,20 +47,19 @@ track_all_new_() {
     return 0
 }
 
-# Adds the name of an existing c/cpp file into the cscope namefile tmp.files
-# unless it is already there or in the namefile cscope.files
+# Add name of existing c/cpp file to the namefile tmp.files
+# unless it is already tracked in tmp.files or cscope.files.
 #
 # If the 1st parameter is the directory name then adds all files from this
 # directory and their subdirectories according to the rules above.
 #
 # Returns with the status 0 iif at least one file is added.
 #
-
 track_project() {
     local pp="$1"
     local filter="${2:-cat}"
-    local wd="$(get_wd_ "$pp")"
-    find -L "$wd"/* -type f |only_sources_ |$filter |track_all_new_ "$pp"
+    local rd="$(get_root_dir_ "$pp")"
+    find -L "$rd"/* -type f |only_sources_ |$filter |track_all_new_ "$pp"
 }
 
 track_file() {
@@ -68,9 +68,9 @@ track_file() {
     readlink -f "$(find -L "$file" -type f)" |track_all_new_ "$pp"
 }
 
-# Checks if the file is tracked by the tmp.files
+# Check if the file is tracked by the tmp.files
 #
-# Returns with the status 0 iif file is tracked.
+# Return with the status 0 iif file is tracked.
 #
 is_tracked() {
     local pp="$1"
@@ -79,7 +79,7 @@ is_tracked() {
         grep -m 1 -q "^${file}$" "$pp"/tmp.files
 }
 
-# Rebuilds the cross-references for the files in the tmp.files
+# Rebuild cross-references for the files in the tmp.files
 #
 do_rebuild() {
     local pp_id="$1"
@@ -98,7 +98,6 @@ do_rebuild() {
 rebuild() {
     local pp="$1"
     local id="$2"
-    [ -d "$pp" ] || return
     cd "$pp" || return
     :>.rebuild
     [ ! -e .locked ] || return
@@ -114,51 +113,26 @@ cscope_file() {
     printf "%s" "$1/tmp.xref"
 }
 
-convert_() {
-    local p="$1"
-    local wd="$2"
-
-    if [ -d "$p/.cscope" ]; then
-        # move from wd to a .repo/ directory if possible
-        for repo in .git .hg .svn; do
-            [ -d "$p/$repo" ] || continue
-
-            [ ! -e "$p/$repo/.cscope" ] || break # cannot move to a .repo/
-
-            mv "$p/.cscope" "$p/$repo"
-            printf "%s" "$p/$repo"
-            return
-        done
-    fi
-
-    printf "%s" "$p"
-}
-
 init_() {
-    local p="$1"
-    local wd="$(get_wd_ "$p")"
-    local pp="$(convert_ "$p" "$wd")/.cscope"
-    cat "$pp/files" |sed "/^[^/]/s,^,$wd/," >"$pp/tmp.files"
-
-    #for d in {0..3}; do
-    #    find -L "$wd"/* -maxdepth $d -type f |only_sources_
-    #done |head -n 42 |track_all_new_ "$pp"
-
+    local pp="$1/.cscope"
     rm -f "$pp/.locked"
     printf "%s" "$pp"
 }
 
+# Return s:pp like "/path/.git/.cscope" or "/path/.cscope"
+#
 get_path() {
     local pwd="$(pwd)"
     local p="$pwd"
-    while :; do
+    while [ "$p" != "/" ]; do
         [ -d "$p/.cscope" ] && { init_ "$p"; return 0; }
         [ -d "$p/.git" ] && { init_ "$p/.git"; return 0; }
         [ -d "$p/.hg" ] && { init_ "$p/.hg"; return 0; }
         [ -d "$p/.svn" ] && { init_ "$p/.svn"; return 0; }
         p="$(dirname "$p")"
-        [ "$p" = "/" ] && { printf "%s" "$pwd/.cscope"; return 0; }
     done
+    init_ "$pwd"
+    return 0
 }
 
 log_() {
