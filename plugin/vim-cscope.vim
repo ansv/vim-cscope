@@ -143,7 +143,13 @@ endfunction
 
 function! s:show_qf(qf, sid, wnr, temp_qf_entry)
     call setqflist(a:qf, 'r')
-    execute "copen"
+    let len = len(a:qf)
+    if len > 33
+        "execute "cclose \| vertical botright copen \| vertical resize 100"
+        execute "copen \| wincmd L"
+    else
+        execute "copen \| wincmd J \| resize " . (len + 1)
+    endif
     call clearmatches()
     call matchadd("Search", a:sid)
     execute a:wnr . "wincmd w"
