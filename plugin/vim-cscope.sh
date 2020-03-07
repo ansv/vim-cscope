@@ -17,7 +17,7 @@
 #
 
 only_sources_() {
-    egrep -i "\.[ch](|pp|\+\+)$|\.cc$"
+    grep -iE "\.[ch](|pp|\+\+)$|\.cc$"
 }
 
 get_wd_() {
@@ -35,14 +35,14 @@ track_all_new_() {
         cat
         [ -e "$pp"/tmp.files ] && cat "$pp"/tmp.files{,}
         [ -e "$pp"/cscope.files ] && cat "$pp"/cscope.files{,}
-    } |sort |uniq -u |tee $t |while read s; do
+    } |sort |uniq -u |tee "$t" |while read -r s; do
         echo "${s#"$wd"/}"
     done >>"$pp/files"
 
-    [ -s $t ] || { rm -f $t; return 1; }
+    [ -s "$t" ] || { rm -f "$t"; return 1; }
 
-    cat $t >>"$pp"/tmp.files
-    rm -f $t
+    cat "$t" >>"$pp"/tmp.files
+    rm -f "$t"
     return 0
 }
 
@@ -81,12 +81,33 @@ is_tracked() {
 
 # Rebuilds the cross-references for the files in the tmp.files
 #
+do_rebuild() {
+    local pp_id="$1"
+    mkdir -p "$pp_id"
+    cd "$pp_id" || return
+    while :; do
+        rm -f ../.rebuild
+        rm -f tmp.xref*
+        cscope -b -q -k -i ../tmp.files -f tmp.xref ||
+            rm -f tmp.xref*
+        [ -e ../.rebuild ] || break
+    done
+    rm ../.locked
+}
+
 rebuild() {
     local pp="$1"
-    cd "$pp"
-    [ -e tmp.files ] &&
-        cscope -b -q -k -i tmp.files -f tmp.xref ||
-        rm -f "$pp"/tmp.xref*
+    local id="$2"
+    [ -d "$pp" ] || return
+    cd "$pp" || return
+    :>.rebuild
+    [ ! -e .locked ] || return
+    :>.locked
+    "$0" do_rebuild "$pp/$id" &
+}
+
+is_ready() {
+    [ ! -e "$1/.locked" ]
 }
 
 cscope_file() {
@@ -108,15 +129,6 @@ convert_() {
             printf "%s" "$p/$repo"
             return
         done
-    elif [ -e "$p/.cboss.files" ]; then
-        # convert from legacy format
-        mkdir "$p/.cscope"
-
-        cat "$p/.cboss.files" |while read s; do
-            echo "${s#"$wd"/}"
-        done >"$p/.cscope/files"
-
-        rm -f "$p"/.cboss*
     fi
 
     printf "%s" "$p"
@@ -132,6 +144,7 @@ init_() {
     #    find -L "$wd"/* -maxdepth $d -type f |only_sources_
     #done |head -n 42 |track_all_new_ "$pp"
 
+    rm -f "$pp/.locked"
     printf "%s" "$pp"
 }
 
@@ -140,13 +153,18 @@ get_path() {
     local p="$pwd"
     while :; do
         [ -d "$p/.cscope" ] && { init_ "$p"; return 0; }
-        [ -f "$p/.cboss.files" ] && { init_ "$p"; return 0; }
         [ -d "$p/.git" ] && { init_ "$p/.git"; return 0; }
         [ -d "$p/.hg" ] && { init_ "$p/.hg"; return 0; }
         [ -d "$p/.svn" ] && { init_ "$p/.svn"; return 0; }
         p="$(dirname "$p")"
-        [ "$p" = "/" ] && { printf "%s" "$pwd"; return 0; }
+        [ "$p" = "/" ] && { printf "%s" "$pwd/.cscope"; return 0; }
     done
 }
+
+log_() {
+    echo "$(date +%T)" "${1:-}" "$(echo "${2:-}" |sed "s,/home/\S*/.cscope\>,\~,")" "${@:3}" >>"$(readlink -f "$0").log"
+}
+
+# log_ "${@:-}"
 
 "$@"

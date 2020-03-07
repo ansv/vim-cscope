@@ -11,11 +11,11 @@
 " Plug 'ansv/vim-cscope'
 "
 " Take a look at the plugin https://github.com/ansv/vim-supernext
-" This helps to walk between the quickfix entries.
+" This helps to walk between quickfix entries.
 "
 " Hint:
 "
-" Since this script uses the key mapping <C-g> that must print the current
+" Since this script uses the key mapping <C-g> that must print current
 " file name, you may remap <C-l> in your .vimrc to have lost functionality as
 " following:
 "
@@ -44,13 +44,21 @@ set csto=0
 set cscopequickfix=s-,g-,d-,c-,t-,e-,f-,i-
 
 let s:script = expand('<sfile>:p:r') . '.sh'
-let s:updated = 1
+let s:dirty = 1
 let s:pp = system(s:script . " get_path")
+let s:id = "0"
 let s:sid_prev = ""
 let s:sid = ""
 let s:qf_prev = ""
 let s:qf = ""
 let s:is_qf_dirty = 0
+
+function! s:scall(cmd, param)
+    call system(s:script . ' ' . a:cmd . ' "' . s:pp . '" "' . a:param . '"')
+    return !v:shell_error
+endfunction
+
+call s:scall("rebuild", s:id)
 
 function! s:is_qf_open()
     return filter(getwininfo(), 'v:val.quickfix && !v:val.loclist') != []
@@ -66,14 +74,11 @@ nnoremap <silent> <C-g><C-h> :call <SID>hide_quickfix()<CR>
 nnoremap <silent> <C-g>h     :call <SID>hide_quickfix()<CR>
 
 
-function! s:scall(cmd, param)
-    call system(s:script . ' ' . a:cmd . ' "' . s:pp . '" "' . a:param . '"')
-    return !v:shell_error
-endfunction
-
 function! s:track_project()
     if s:scall("track_project", "")
-        let s:updated = 1
+        call s:try_to_reload()
+        call s:scall("rebuild", s:id)
+        let s:dirty = 1
     endif
 endfunction
 
@@ -83,39 +88,49 @@ function! s:track_file(name)
         let name = expand("%")
     endif
     if s:scall("track_file", name)
-        let s:updated = 1
+        call s:try_to_reload()
+        call s:scall("rebuild", s:id)
+        let s:dirty = 1
     endif
 endfunction
 
-function! s:reload()
+function! s:try_to_reload()
+    if !s:scall("is_ready", "")
+        return
+    endif
+
+    let s:dirty = 0
     silent cscope kill -1
-    call s:scall("rebuild", "")
-    let file = system(s:script . ' cscope_file "' . s:pp . '"')
+    let file = system(s:script . ' cscope_file "' . s:pp . '/' . s:id . '"')
+    let s:id = s:id =~ "0" ? "1" : "0"
 
     " add dynamic cscope database
     if filereadable(file)
-        execute "cscope add " . file
+        silent execute "cscope add " . file
     endif
 
     " add default (static) cscope database
     if filereadable(s:pp . "/cscope.out")
-        execute "cscope add " . s:pp . "/cscope.out"
+        silent execute "cscope add " . s:pp . "/cscope.out"
     endif
 endfunction
 
 function! s:cscope_find(cmd)
-    if s:updated
-        let s:updated = 0
-        call s:reload()
+    if s:dirty == 1
+        call s:try_to_reload()
+        if s:dirty == 1
+            echo "cscope: updating database, results may be incomplete"
+        else
+            echo
+        endif
     endif
-
     try
-        execute "cscope find " . a:cmd
+        silent execute "cscope find " . a:cmd
         return 1
     catch /^Vim\%((\a\+)\)\=:E259:/
     catch /^Vim\%((\a\+)\)\=:E567:/
     endtry
-
+    call s:hide_quickfix()
     return 0
 endfunction
 
@@ -224,7 +239,9 @@ nnoremap <silent> <C-g>f     :call <SID>find_files()<CR>
 
 function! s:on_write()
     if s:scall("is_tracked", expand("%:p"))
-        let s:updated = 1
+        call s:try_to_reload()
+        call s:scall("rebuild", s:id)
+        let s:dirty = 1
     endif
 endfunction
 
