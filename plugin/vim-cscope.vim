@@ -155,34 +155,53 @@ function! s:show_qf(qf, sid, wnr, temp_qf_entry)
 endfunction
 
 function! s:quickfix_list(cmd, id, sid)
-    let home = expand("%:p") . ":" . line(".")  . ":" . col(".") . ": home"
     let wnr = winnr()
+    let fname = bufname(bufnr())
+    let lnum = line(".")
+    let home_row = fname . ":" . lnum  . ":" . col(".")
+
     if !s:cscope_find(a:cmd . " " . a:id)
         return
     endif
 
-    :caddexpr home
+    " list of current source lines; may be empty
+    let fqf = filter(getqflist(), {idx, val -> bufname(val.bufnr) == fname && val.lnum == lnum})
+
+    " add home row to the quickfix
+    :caddexpr home_row . ":" . (len(fqf) == 1 ? fqf[0].text : "<<source line>>")
+
+    " create quickfix item
     let qf = getqflist()
     let item = remove(qf, -1)
+
+    if len(fqf) == 1
+        " an item with the same content will be inserted to the home row;
+        " remove an equivalent from the original place
+        let qf = filter(qf, {idx, val -> bufname(val.bufnr) != fname || val.lnum != lnum})
+    endif
+
+    " insert item with the home row
     call insert(qf, item, 0)
 
-    if a:cmd == "g"
-        call s:show_qf(qf, a:sid, wnr, 1)
-        execute "crewind 2"
-        if len(getqflist()) == 2
-            call setqflist([])
-            execute "cclose"
-        endif
-    else
-        call s:push_qf(qf, a:sid)
-        call s:show_qf(qf, a:sid, wnr, 0)
-        execute "cfirst"
-    endif
+    call s:push_qf(qf, a:sid)
+    call s:show_qf(qf, a:sid, wnr, 0)
+    execute "cfirst"
 endfunction
 
 function! s:goto_def()
+    let wnr = winnr()
     let id = expand("<cword>")
-    call s:quickfix_list("g", id, '\<' . id . '\>')
+
+    if !s:cscope_find("g " . id)
+        return
+    endif
+
+    let sid = '\<' . id . '\>'
+    call s:show_qf(getqflist(), sid, wnr, 1)
+    if len(getqflist()) == 1
+        call setqflist([])
+        execute "cclose"
+    endif
 endfunction
 
 " goto global [D]efinition
