@@ -44,7 +44,7 @@ set cscopequickfix=s-,g-,d-,c-,t-,e-,f-,i-
 
 let s:script = expand('<sfile>:p:r') . '.sh'
 let s:dirty = 1
-let s:pp = system(s:script . " get_path")
+let s:pp = system(s:script . " cs_init")
 let s:id = "0"
 let s:sid_prev = ""
 let s:sid = ""
@@ -57,7 +57,32 @@ function! s:scall(cmd, param)
     return !v:shell_error
 endfunction
 
-call s:scall("rebuild", s:id)
+function! s:try_to_reload()
+    if !s:scall("cs_is_file_ready", "")
+        return
+    endif
+
+    let s:dirty = 0
+    silent cscope kill -1
+    let file = system(s:script . ' cs_get_xref_file "' . s:pp . '/' . s:id . '"')
+    let s:id = s:id =~ "0" ? "1" : "0"
+
+    " add dynamic cscope database
+    if filereadable(file)
+        silent execute "cscope add " . file
+    endif
+
+    " add default (static) cscope database
+    if filereadable(s:pp . "/cscope.out")
+        silent execute "cscope add " . s:pp . "/cscope.out"
+    endif
+endfunction
+
+function! s:rebuild()
+    call s:try_to_reload() " get latest good before rebuild
+    call s:scall("cs_rebuild", s:id)
+    let s:dirty = 1
+endfunction
 
 function! s:is_qf_open()
     return filter(getwininfo(), 'v:val.quickfix && !v:val.loclist') != []
@@ -73,10 +98,8 @@ nnoremap <silent> <C-g><C-h> :call <SID>hide_quickfix()<CR>
 nnoremap <silent> <C-g>h     :call <SID>hide_quickfix()<CR>
 
 function! s:track_project()
-    if s:scall("track_project", "")
-        call s:try_to_reload()
-        call s:scall("rebuild", s:id)
-        let s:dirty = 1
+    if s:scall("cs_track_project", "")
+        call s:rebuild()
     endif
 endfunction
 
@@ -85,31 +108,8 @@ function! s:track_file(name)
     if empty(name)
         let name = expand("%")
     endif
-    if s:scall("track_file", name)
-        call s:try_to_reload()
-        call s:scall("rebuild", s:id)
-        let s:dirty = 1
-    endif
-endfunction
-
-function! s:try_to_reload()
-    if !s:scall("is_ready", "")
-        return
-    endif
-
-    let s:dirty = 0
-    silent cscope kill -1
-    let file = system(s:script . ' cscope_file "' . s:pp . '/' . s:id . '"')
-    let s:id = s:id =~ "0" ? "1" : "0"
-
-    " add dynamic cscope database
-    if filereadable(file)
-        silent execute "cscope add " . file
-    endif
-
-    " add default (static) cscope database
-    if filereadable(s:pp . "/cscope.out")
-        silent execute "cscope add " . s:pp . "/cscope.out"
+    if s:scall("cs_track_file", name)
+        call s:rebuild()
     endif
 endfunction
 
@@ -256,10 +256,8 @@ nnoremap <silent> <C-g><C-f> :call <SID>find_files()<CR>
 nnoremap <silent> <C-g>f     :call <SID>find_files()<CR>
 
 function! s:on_write()
-    if s:scall("is_tracked", expand("%:p"))
-        call s:try_to_reload()
-        call s:scall("rebuild", s:id)
-        let s:dirty = 1
+    if s:scall("cs_is_file_tracked", expand("%:p"))
+        call s:rebuild()
     endif
 endfunction
 
@@ -269,3 +267,9 @@ command! CScopeTrackProject
     \ call s:track_project()
 command! -nargs=? -complete=file CScopeTrackFile
     \ call s:track_file(<q-args>)
+
+call s:rebuild()
+
+" [R]ebuild cscope DB
+nnoremap <silent> <C-g><C-r> :call <SID>rebuild()<CR>
+nnoremap <silent> <C-g>r     :call <SID>rebuild()<CR>

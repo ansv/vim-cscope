@@ -30,7 +30,6 @@ track_all_new_() {
     local t=$(mktemp)
 
     mkdir -p "$pp"
-    :>"$pp"/tmp.files
 
     {
         cat # from stdin
@@ -38,11 +37,12 @@ track_all_new_() {
         [ -e "$pp"/cscope.files ] && cat "$pp"/cscope.files{,}
     } |sort |uniq -u |tee "$t" |while read -r s; do
         echo "${s#"$rd"/}"
-    done >>"$pp/files"
+    done >>"$pp"/files
+
+    cat "$t" >>"$pp"/tmp.files
 
     [ -s "$t" ] || { rm -f "$t"; return 1; }
 
-    cat "$t" >>"$pp"/tmp.files
     rm -f "$t"
     return 0
 }
@@ -55,14 +55,14 @@ track_all_new_() {
 #
 # Returns with the status 0 iif at least one file is added.
 #
-track_project() {
+cs_track_project() {
     local pp="$1"
     local filter="${2:-cat}"
     local rd="$(get_root_dir_ "$pp")"
     find -L "$rd"/* -type f |only_sources_ |$filter |track_all_new_ "$pp"
 }
 
-track_file() {
+cs_track_file() {
     local pp="$1"
     local file="$2"
     readlink -f "$(find -L "$file" -type f)" |track_all_new_ "$pp"
@@ -72,7 +72,7 @@ track_file() {
 #
 # Return with the status 0 iif file is tracked.
 #
-is_tracked() {
+cs_is_file_tracked() {
     local pp="$1"
     local file="$2"
     [ -e "$pp"/tmp.files ] &&
@@ -81,8 +81,22 @@ is_tracked() {
 
 # Rebuild cross-references for the files in the tmp.files
 #
-do_rebuild() {
+async_rebuild_() {
     local pp_id="$1"
+    local wd="$2"
+
+    # initialize the tmp.files
+    local pp="$pp_id/.."
+    if [ -f "$pp"/files ] && [ ! -f "$pp"/tmp.files ]; then
+        cd "$wd"
+        {
+            cat "$pp"/files
+            [ -e "$pp"/cscope.files ] && cat "$pp"/cscope.files
+        } |while read -r s; do
+            readlink -f "$(find -L "$s" -type f)"
+        done |sort |uniq >"$pp"/tmp.files
+    fi
+
     mkdir -p "$pp_id"
     cd "$pp_id" || return
     while :; do
@@ -95,33 +109,39 @@ do_rebuild() {
     rm ../.locked
 }
 
-rebuild() {
+cs_rebuild() {
     local pp="$1"
     local id="$2"
+    local pwd="$(pwd)"
+
     cd "$pp" || return
     :>.rebuild
     [ ! -e .locked ] || return
     :>.locked
-    "$0" do_rebuild "$pp/$id" &
+    "$0" async_rebuild_ "$pp/$id" "$pwd" &
 }
 
-is_ready() {
+cs_is_file_ready() {
     [ ! -e "$1/.locked" ]
 }
 
-cscope_file() {
+cs_get_xref_file() {
     printf "%s" "$1/tmp.xref"
 }
 
 init_() {
     local pp="$1/.cscope"
-    rm -f "$pp/.locked"
+    rm -f "$pp"/.locked
+    # remove "tmp.files" if it's not newer than "files"
+    [ -f "$pp"/files ] &&
+        ! find "$pp"/tmp.files -cnewer "$pp"/files |grep -q ^ &&
+        rm -f "$pp"/tmp.files
     printf "%s" "$pp"
 }
 
 # Return s:pp like "/path/.git/.cscope" or "/path/.cscope"
 #
-get_path() {
+cs_init() {
     local pwd="$(pwd)"
     local p="$pwd"
     while [ "$p" != "/" ]; do
