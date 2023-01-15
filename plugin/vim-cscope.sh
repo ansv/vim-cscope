@@ -109,6 +109,11 @@ async_rebuild_() {
     rm ../.locked
 }
 
+cs_reset() {
+    local pp="$1"
+    rm -f "$pp"/tmp.files
+}
+
 cs_rebuild() {
     local pp="$1"
     local id="$2"

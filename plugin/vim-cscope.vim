@@ -78,6 +78,11 @@ function! s:try_to_reload()
     endif
 endfunction
 
+function! s:proper_rebuild()
+    call s:scall("cs_reset", "")
+    call s:rebuild()
+endfunction
+
 function! s:rebuild()
     call s:try_to_reload() " get latest good before rebuild
     call s:scall("cs_rebuild", s:id)
@@ -263,13 +268,11 @@ endfunction
 
 au BufWritePost * call <SID>on_write()
 
+command! CScopeRebuild
+    \ call s:proper_rebuild()
 command! CScopeTrackProject
     \ call s:track_project()
 command! -nargs=? -complete=file CScopeTrackFile
     \ call s:track_file(<q-args>)
 
 call s:rebuild()
-
-" [R]ebuild cscope DB
-nnoremap <silent> <C-g><C-r> :call <SID>rebuild()<CR>
-nnoremap <silent> <C-g>r     :call <SID>rebuild()<CR>
