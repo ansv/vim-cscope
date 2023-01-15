@@ -154,7 +154,7 @@ function! s:show_qf(qf, sid, wnr, temp_qf_entry)
         execute "copen \| wincmd J \| resize " . (len + 1)
     endif
     call clearmatches()
-    call matchadd("Search", a:sid)
+    call matchadd("cscope_finding", a:sid)
     execute a:wnr . "wincmd w"
     let s:is_qf_dirty = a:temp_qf_entry
 endfunction
@@ -276,3 +276,4 @@ command! -nargs=? -complete=file CScopeTrackFile
     \ call s:track_file(<q-args>)
 
 call s:rebuild()
+highlight cscope_finding ctermfg=yellow guifg=yellow
